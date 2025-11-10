@@ -168,3 +168,43 @@ class DataPlotter:
             return ax
 
         return self._create_plot(plot_func, figsize, title, xlabel, ylabel, callbacks) 
+
+    def category_mean_with_hdi(self, value_col, category_col=None, 
+                          stat='mean', show_hdi=True, hdi_prob=0.94,
+                          kind='barh', title=None, xlabel=None, ylabel=None,
+                          linestyle='', figsize=None, top_n=None, callbacks=None):
+        """Plot mean/median of value_col per category with HDI error bars.
+
+        Args:
+            value_col: Column containing values to aggregate
+            category_col: Categorical column to group by
+            stat: 'mean' or 'median'
+            show_hdi: Whether to show HDI error bars
+            hdi_prob: HDI probability (default 0.94)
+            top_n: Show only top N categories by count
+        """
+        if category_col is None:
+            category_col=self.category_col1
+
+        def plot_func(ax):
+            grouped = self.df.groupby(category_col)[value_col]
+            if stat=='mean':
+                means = grouped.mean() 
+            elif stat=='median':
+                means=grouped.median()
+
+            lower_bounds = []
+            upper_bounds = []
+            for category in means.index:
+                values = self.df[self.df[category_col] == category][value_col].values
+                interval = hdi(values, hdi_prob=hdi_prob)
+                lower_bounds.append(interval[0])
+                upper_bounds.append(interval[1])
+
+            ax.errorbar(x=means.values, y=means.index, 
+                xerr=[lower_bounds, upper_bounds],
+                fmt='o', linestyle=linestyle)
+            return ax
+
+        title = f"{stat} of per {category_col}" if title is None else title
+        return self._create_plot(plot_func, figsize, title, xlabel, ylabel, callbacks)
