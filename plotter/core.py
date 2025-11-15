@@ -416,6 +416,113 @@ class DataPlotter:
 
         return fig, axes
 
+    def category_mean_by_group_faceted_multiline(self, value_col, category_col=None, group_by=None,
+                                    facet_col=None, x_axis='group',
+                                    stat='mean', show_hdi=True, hdi_prob=0.94,
+                                    treat_as_continuous=False, ncols=3,
+                                    title=None, xlabel=None, ylabel=None,
+                                    alpha=0.3, figsize=None, callbacks=None, legend='right'):
+        """Plot mean/median by category and group in faceted subplots with multiple lines per subplot.
+
+        Args:
+            value_col: Column containing values to aggregate
+            category_col: Column for separate lines (e.g., 'agent')
+            group_by: Column for x-axis grouping (e.g., 'dayofweek')
+            facet_col: Column to create separate subplots for (e.g., 'topic')
+            x_axis: 'category' or 'group' - which goes on x-axis
+            stat: 'mean' or 'median'
+            show_hdi: Whether to show HDI bands/error bars
+            treat_as_continuous: If True, connect points with lines
+            ncols: Number of columns in facet grid
+            legend: Legend position ('right', 'bottom', 'top', 'left', or None)
+        """
+        category_col = self.category_col1 if category_col is None else category_col
+        group_by = self.category_col2 if group_by is None else group_by
+
+        facet_values = self.df[facet_col].unique()
+        data_subsets = [self.df[self.df[facet_col] == fv] for fv in facet_values]
+        subplot_titles = list(facet_values)
+
+        n_facets = len(facet_values)
+        nrows = (n_facets + ncols - 1) // ncols
+
+        def plot_func(ax, data):
+            if x_axis == 'group':
+                x_categories = sorted(data[group_by].unique())
+                line_categories = sorted(data[category_col].unique())
+                x_col, line_col = group_by, category_col
+            else:
+                x_categories = sorted(data[category_col].unique())
+                line_categories = sorted(data[group_by].unique())
+                x_col, line_col = category_col, group_by
+
+            for line_cat in line_categories:
+                means, lower_bounds, upper_bounds = [], [], []
+
+                for x_cat in x_categories:
+                    values = data[(data[x_col] == x_cat) & 
+                                (data[line_col] == line_cat)][value_col].values
+
+                    if len(values) > 0:
+                        means.append(np.mean(values) if stat == 'mean' else np.median(values))
+
+                        if show_hdi and len(values) > 1:
+                            interval = hdi(values, hdi_prob=hdi_prob)
+                            lower_bounds.append(interval[0])
+                            upper_bounds.append(interval[1])
+                        else:
+                            lower_bounds.append(means[-1])
+                            upper_bounds.append(means[-1])
+                    else:
+                        means.append(np.nan)
+                        lower_bounds.append(np.nan)
+                        upper_bounds.append(np.nan)
+
+                x = range(len(x_categories))
+
+                if treat_as_continuous:
+                    ax.plot(x, means, marker='o', label=line_cat)
+                    if show_hdi:
+                        ax.fill_between(x, lower_bounds, upper_bounds, alpha=alpha)
+                else:
+                    ax.errorbar(x, means,
+                            yerr=[[m - l for m, l in zip(means, lower_bounds)],
+                                    [u - m for m, u in zip(means, upper_bounds)]],
+                            fmt='o', capsize=5, label=line_cat)
+
+            ax.set_xticks(x)
+            ax.set_xticklabels(x_categories, rotation=45, ha='right')
+            return ax
+
+        fig, axes = self._create_facet_plot(nrows, ncols, plot_func, data_subsets,
+                                        figsize, subplot_titles, title, xlabel, ylabel, callbacks)
+
+        # Handle legend
+        if legend is not None:
+            handles, labels = axes[0].get_legend_handles_labels()
+            if handles:
+                for ax in axes:
+                    legend_obj = ax.get_legend()
+                    if legend_obj:
+                        legend_obj.remove()
+
+                if legend == 'right':
+                    fig.legend(handles, labels, loc='center left', bbox_to_anchor=(1, 0.5))
+                elif legend == 'bottom':
+                    fig.legend(handles, labels, loc='upper center', bbox_to_anchor=(0.5, -0.05), ncol=len(labels))
+                elif legend == 'top':
+                    fig.legend(handles, labels, loc='lower center', bbox_to_anchor=(0.5, 1.0), ncol=len(labels))
+                elif legend == 'left':
+                    fig.legend(handles, labels, loc='center right', bbox_to_anchor=(0, 0.5))
+        else:
+            for ax in axes:
+                legend_obj = ax.get_legend()
+                if legend_obj:
+                    legend_obj.remove()
+
+        return fig, axes
+
+
 
 
 
